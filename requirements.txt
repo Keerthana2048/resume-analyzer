@@ -5,3 +5,6 @@ python-docx
 requests
 fastapi
 uvicorn
+sentence-transformers
+torch
+scikit-learn
