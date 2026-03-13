@@ -1,113 +1,174 @@
 from sentence_transformers import SentenceTransformer, util
+from ai_recommender import generate_ai_recommendations
 import re
 
-# Load sentence transformer model
-model = SentenceTransformer("all-MiniLM-L6-v2")
+# Better semantic model for resume-job similarity
+model = SentenceTransformer("all-mpnet-base-v2")
 
 
 def calculate_scores(resume_text, job_description, matched_skills, jd_skills):
 
-    # ---------------- Semantic Similarity ----------------
-    embeddings = model.encode([resume_text, job_description], convert_to_tensor=True)
+    # ---------------- SEMANTIC SIMILARITY ----------------
+
+    embeddings = model.encode(
+        [resume_text, job_description],
+        convert_to_tensor=True
+    )
+
     similarity = util.cos_sim(embeddings[0], embeddings[1]).item()
 
-    resume_lower = resume_text.lower()
+    semantic_score = similarity * 100
 
-    # ---------------- Skills Score ----------------
-    if len(jd_skills) > 0:
-        skills_score = round((len(matched_skills) / len(jd_skills)) * 100, 2)
+    # ---------------- SKILLS SCORE ----------------
+
+    if jd_skills:
+        skills_score = (len(matched_skills) / len(jd_skills)) * 100
     else:
         skills_score = 0
 
-    # ---------------- Accuracy Score ----------------
-    accuracy_score = round((similarity * 70) + (skills_score * 0.3), 2)
+    # ---------------- PROJECT DETECTION ----------------
 
-    # ---------------- Confidence Score ----------------
-    confidence_score = round((similarity ** 2) * 100, 2)
+    project_keywords = [
+        "project",
+        "developed",
+        "built",
+        "system",
+        "application",
+        "model"
+    ]
 
-    # ---------------- Projects Score ----------------
-    project_keywords = ["project", "developed", "built", "created", "designed"]
-    project_presence = any(word in resume_lower for word in project_keywords)
-
-    projects_score = 100 if project_presence else 30
-
-    # ---------------- Experience Score ----------------
-    exp_keywords = ["experience", "intern", "worked", "company", "organization"]
-    experience_presence = any(word in resume_lower for word in exp_keywords)
-
-    experience_score = 100 if experience_presence else 30
-
-    # ---------------- Quantified Achievement Detection ----------------
-    quantified = re.search(r"\d+%|\d+\+?", resume_text)
-    quantified_score = 100 if quantified else 40
-
-    # ---------------- ATS Score ----------------
-    ats_score = round(
-        (
-            skills_score * 0.4
-            + projects_score * 0.2
-            + experience_score * 0.2
-            + quantified_score * 0.2
-        ),
-        2,
+    project_presence = any(
+        k in resume_text.lower() for k in project_keywords
     )
 
-    # ---------------- Job Fit Category ----------------
-    if skills_score >= 75 and similarity >= 0.7:
-        job_fit = "Strong Fit"
-    elif skills_score >= 40:
-        job_fit = "Moderate Fit"
-    else:
-        job_fit = "Weak Fit"
+    projects_score = 100 if project_presence else 50
 
-    # ---------------- Missing Skills ----------------
+    # ---------------- EXPERIENCE DETECTION ----------------
+
+    experience_keywords = [
+        "intern",
+        "experience",
+        "worked",
+        "collaborated",
+        "team"
+    ]
+
+    experience_presence = any(
+        k in resume_text.lower() for k in experience_keywords
+    )
+
+    experience_score = 100 if experience_presence else 50
+
+    # ---------------- QUANTIFIED ACHIEVEMENTS ----------------
+
+    quantified = re.search(r"\d+%|\d+\+?", resume_text)
+
+    quantified_score = 100 if quantified else 60
+
+    # ---------------- ATS SCORE ----------------
+
+    ats_score = (
+
+        skills_score * 0.5 +
+        projects_score * 0.2 +
+        experience_score * 0.2 +
+        quantified_score * 0.1
+
+    )
+
+    # ---------------- ACCURACY SCORE (Improved Formula) ----------------
+
+    accuracy_score = (
+
+        skills_score * 0.55 +
+        ats_score * 0.30 +
+        semantic_score * 0.25
+
+    )
+
+    # prevent score >100
+    accuracy_score = min(accuracy_score, 100)
+
+    # ---------------- CONFIDENCE SCORE ----------------
+
+    confidence_score = (
+
+        semantic_score * 0.6 +
+        skills_score * 0.4
+
+    )
+
+    confidence_score = min(confidence_score, 100)
+
+    # ---------------- RESUME STRENGTH ----------------
+
+    resume_strength = (
+
+        skills_score * 0.4 +
+        projects_score * 0.3 +
+        experience_score * 0.3
+
+    )
+
+    # ---------------- GRADE ----------------
+
+    if accuracy_score >= 90:
+        grade = "A+"
+    elif accuracy_score >= 80:
+        grade = "A"
+    elif accuracy_score >= 70:
+        grade = "B"
+    elif accuracy_score >= 60:
+        grade = "C"
+    else:
+        grade = "Needs Improvement"
+
+    # ---------------- JOB FIT STATEMENT ----------------
+
+    if accuracy_score >= 90:
+        job_fit_statement = "⭐ Excellent Match — Best Fit for the Job"
+    elif accuracy_score >= 80:
+        job_fit_statement = "✅ Strong Match — Very Good Fit"
+    elif accuracy_score >= 70:
+        job_fit_statement = "👍 Moderate Match — Good Fit"
+    elif accuracy_score >= 60:
+        job_fit_statement = "⚠ Partial Match — Needs Skill Improvements"
+    else:
+        job_fit_statement = "❌ Low Match — Resume Needs Major Improvements"
+
+    # ---------------- MISSING SKILLS ----------------
+
     missing_skills = list(set(jd_skills) - set(matched_skills))
 
-    # ---------------- Suggestions ----------------
-    suggestions = []
+    # ---------------- AI RECOMMENDATIONS ----------------
 
-    if missing_skills:
-        for skill in missing_skills:
-            suggestions.append(
-                f"Add practical experience in '{skill}' to better match the job description."
-            )
+    ai_recommendations = generate_ai_recommendations(
+        resume_text,
+        job_description,
+        missing_skills
+    )
 
-    if not project_presence:
-        suggestions.append(
-            "Include detailed project descriptions showcasing your technical work."
-        )
+    ai_recommendations = ai_recommendations[:10]
 
-    if not experience_presence:
-        suggestions.append(
-            "Add internship or real-world experience if available."
-        )
+    # ---------------- RETURN RESULTS ----------------
 
-    if not quantified:
-        suggestions.append(
-            "Quantify achievements (e.g., improved performance by 20%)."
-        )
-
-    if ats_score < 60:
-        suggestions.append(
-            "Improve ATS compatibility by aligning resume keywords with the job description."
-        )
-
-    if not suggestions:
-        suggestions.append("Resume is well aligned with job requirements.")
-
-    # ---------------- Return Results ----------------
     return {
-        "semantic_similarity": round(similarity * 100, 2),
-        "accuracy_score": accuracy_score,
-        "confidence_score": confidence_score,
-        "confidence_level": (
-            "High" if confidence_score > 60 else "Medium" if confidence_score > 30 else "Low"
-        ),
-        "job_fit_category": job_fit,
-        "skills_score": skills_score,
+
+        "accuracy_score": round(accuracy_score, 2),
+        "confidence_score": round(confidence_score, 2),
+
+        "resume_grade": grade,
+        "job_fit_statement": job_fit_statement,
+
+        "resume_strength": round(resume_strength, 2),
+
+        "skills_score": round(skills_score, 2),
         "projects_score": projects_score,
         "experience_score": experience_score,
-        "ats_score": ats_score,
+
+        "ats_score": round(ats_score, 2),
+
         "missing_skills": missing_skills,
-        "improvement_suggestions": suggestions,
+        "ai_recommendations": ai_recommendations
+
     }

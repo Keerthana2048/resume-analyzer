@@ -1,186 +1,305 @@
 import streamlit as st
 import plotly.graph_objects as go
+import pandas as pd
+import seaborn as sns
+import matplotlib.pyplot as plt
+import io
+import random
+
+from reportlab.lib.pagesizes import letter
+from reportlab.pdfgen import canvas
 
 from resume_parser import parse_resume
 from skill_extractor import extract_skills
 from scoring_engine import calculate_scores
 
-st.set_page_config(page_title="AI Resume Screening", layout="wide")
+st.set_page_config(page_title="AuroraCV", layout="wide")
 
-# ---------------- Custom CSS ----------------
-st.markdown("""
+# ---------------- Sparkles ----------------
+
+sparkles = ""
+
+for i in range(30):
+    x = random.randint(0,100)
+    y = random.randint(0,100)
+    delay = random.uniform(0,4)
+
+    sparkles += f'<div class="sparkle" style="left:{x}%; top:{y}%; animation-delay:{delay}s"></div>'
+
+# ---------------- UI ----------------
+
+st.markdown(f"""
 <style>
-body {
-    background-color: #0e1117;
-}
-.hero {
-    background: linear-gradient(90deg, #1f2937, #111827);
-    padding: 30px;
-    border-radius: 15px;
-    margin-bottom: 20px;
-}
-.hero h1 {
-    color: #4ade80;
-    font-size: 42px;
-}
-.skill-badge {
-    background: linear-gradient(90deg,#2563eb,#1d4ed8);
-    padding: 8px 14px;
-    border-radius: 20px;
-    margin: 5px;
-    display: inline-block;
-    color: white;
-    font-size: 14px;
-}
-.missing-badge {
-    background: linear-gradient(90deg,#ef4444,#dc2626);
-    padding: 8px 14px;
-    border-radius: 20px;
-    margin: 5px;
-    display: inline-block;
-    color: white;
-    font-size: 14px;
-}
-.section-title {
-    font-size: 22px;
-    font-weight: bold;
-    margin-top: 30px;
-}
+
+.stApp {{
+background: linear-gradient(135deg,#020617,#0f172a,#1e293b);
+color:white;
+}}
+
+.title {{
+font-size:70px;
+font-weight:900;
+text-align:center;
+background: linear-gradient(90deg,#22d3ee,#a78bfa,#f472b6);
+-webkit-background-clip:text;
+color:transparent;
+}}
+
+.subtitle {{
+text-align:center;
+font-size:22px;
+margin-bottom:50px;
+color:#cbd5f5;
+}}
+
+[data-testid="stMetric"] {{
+background: rgba(255,255,255,0.05);
+padding:20px;
+border-radius:15px;
+transition:0.3s;
+}}
+
+[data-testid="stMetric"]:hover {{
+transform:scale(1.08);
+box-shadow:0 0 20px #22d3ee;
+}}
+
+[data-testid="stFileUploader"] {{
+background:rgba(255,255,255,0.05);
+padding:25px;
+border-radius:16px;
+transition:0.3s;
+}}
+
+[data-testid="stFileUploader"]:hover {{
+transform:scale(1.08);
+box-shadow:0 0 25px #22d3ee;
+}}
+
+.sparkle {{
+position:fixed;
+width:4px;
+height:4px;
+background:white;
+border-radius:50%;
+animation:sparkleAnim 3s infinite ease-in-out;
+}}
+
+@keyframes sparkleAnim {{
+0%{{transform:scale(0);opacity:0}}
+50%{{transform:scale(1.6);opacity:1}}
+100%{{transform:scale(0);opacity:0}}
+}}
+
 </style>
+
+{sparkles}
 """, unsafe_allow_html=True)
 
-# ---------------- Hero Section ----------------
+# ---------------- Title ----------------
+
 st.markdown("""
-<div class="hero">
-<h1>🚀 AI Resume Intelligence System</h1>
-<p>Advanced ATS Analysis • Section Scoring • Smart Skill Gap Detection</p>
+<div class="title">✨ AuroraCV</div>
+<div class="subtitle">
+AI Resume Analyzer • ATS Scoring • Skill Gap Detection
 </div>
 """, unsafe_allow_html=True)
 
-# ---------------- Input Section ----------------
-col1, col2 = st.columns(2)
+# ---------------- PDF Generator ----------------
+
+def generate_pdf(result, matched):
+
+    buffer = io.BytesIO()
+    pdf = canvas.Canvas(buffer, pagesize=letter)
+
+    y = 750
+    pdf.setFont("Helvetica-Bold",18)
+    pdf.drawString(170,y,"AuroraCV Resume Analysis Report")
+
+    pdf.setFont("Helvetica",12)
+
+    pdf.drawString(50,700,f"Accuracy Score: {result['accuracy_score']}%")
+    pdf.drawString(50,680,f"Confidence Score: {result['confidence_score']}%")
+    pdf.drawString(50,660,f"ATS Score: {result['ats_score']}%")
+    pdf.drawString(50,640,f"Resume Grade: {result['resume_grade']}")
+
+    y = 600
+    pdf.drawString(50,y,"Matched Skills")
+
+    for skill in matched:
+        y -= 20
+        pdf.drawString(70,y,f"- {skill}")
+
+    y -= 40
+    pdf.drawString(50,y,"Missing Skills")
+
+    for skill in result["missing_skills"]:
+        y -= 20
+        pdf.drawString(70,y,f"- {skill}")
+
+    y -= 40
+    pdf.drawString(50,y,"AI Recommendations")
+
+    for rec in result["ai_recommendations"]:
+        y -= 20
+        pdf.drawString(70,y,f"- {rec}")
+
+    pdf.save()
+    buffer.seek(0)
+
+    return buffer
+
+# ---------------- Inputs ----------------
+
+col1,col2 = st.columns(2)
 
 with col1:
     resume = st.file_uploader("📄 Upload Resume (PDF/DOCX)")
 
 with col2:
-    job_description = st.text_area("📝 Enter Job Description", height=150)
+    job_description = st.text_area("📝 Enter Job Description", height=200)
 
-# ---------------- Analyze Button ----------------
+# ---------------- Analyze ----------------
+
 if st.button("🔍 Analyze Resume", use_container_width=True):
 
-    if resume is None or job_description.strip() == "":
-        st.warning("⚠ Please upload resume and enter job description")
+    resume_text = parse_resume(resume)
 
-    else:
-        with st.spinner("Analyzing Resume with AI Engine..."):
+    jd_skills = extract_skills(job_description)
 
-            try:
-                # ---------------- Parse Resume ----------------
-                resume_text = parse_resume(resume)
+    matched_skills = [
+        skill for skill in jd_skills
+        if skill.lower() in resume_text.lower()
+    ]
 
-                # ---------------- Extract JD Skills ----------------
-                jd_skills = extract_skills(job_description)
+    result = calculate_scores(
+        resume_text,
+        job_description,
+        matched_skills,
+        jd_skills
+    )
 
-                # ---------------- Match Skills ----------------
-                matched_skills = [
-                    skill for skill in jd_skills
-                    if skill.lower() in resume_text.lower()
-                ]
+    st.header("📊 Resume Analysis Dashboard")
 
-                # ---------------- Calculate Scores ----------------
-                result = calculate_scores(
-                    resume_text,
-                    job_description,
-                    matched_skills,
-                    jd_skills
-                )
+    m1,m2,m3,m4 = st.columns(4)
 
-                # Add matched skills to result
-                result["matched_skills"] = matched_skills
+    m1.metric("Accuracy", f"{result['accuracy_score']}%")
+    m2.metric("Confidence", f"{result['confidence_score']}%")
+    m3.metric("ATS Score", f"{result['ats_score']}%")
+    m4.metric("Grade", result["resume_grade"])
 
-                # ---------------- Dashboard ----------------
-                st.markdown("---")
-                st.markdown("## 📊 Resume Analysis Dashboard")
+    # ---------------- Job Fit Statement ----------------
 
-                colA, colB, colC = st.columns(3)
+    if "job_fit_statement" in result:
 
-                colA.metric("🎯 Accuracy", f"{result['accuracy_score']} %")
-                colB.metric("🔒 Confidence", f"{result['confidence_score']} %")
-                colC.metric("📈 ATS Score", f"{result['ats_score']} %")
+        st.markdown(f"""
+        <div style="
+        background:rgba(34,211,238,0.15);
+        padding:18px;
+        border-radius:12px;
+        font-size:20px;
+        text-align:center;
+        border:1px solid rgba(34,211,238,0.4);
+        margin-bottom:20px;
+        ">
+        {result["job_fit_statement"]}
+        </div>
+        """, unsafe_allow_html=True)
 
-                st.progress(result["accuracy_score"] / 100)
+    # ---------------- ATS Gauge ----------------
 
-                # ---------------- Section Scores ----------------
-                st.markdown("### 📌 Section Performance")
+    ats_fig = go.Figure(go.Indicator(
+        mode="gauge+number",
+        value=result["ats_score"],
+        title={'text':"ATS Score"},
+        gauge={'axis':{'range':[0,100]}}
+    ))
 
-                s1, s2, s3 = st.columns(3)
-                s1.metric("Skills Score", f"{result['skills_score']}%")
-                s2.metric("Projects Score", f"{result['projects_score']}%")
-                s3.metric("Experience Score", f"{result['experience_score']}%")
+    st.plotly_chart(ats_fig)
 
-                # ---------------- Radar Chart ----------------
-                fig = go.Figure()
+    # ---------------- Confidence Gauge ----------------
 
-                fig.add_trace(go.Scatterpolar(
-                    r=[
-                        result['skills_score'],
-                        result['projects_score'],
-                        result['experience_score'],
-                        result['ats_score']
-                    ],
-                    theta=["Skills", "Projects", "Experience", "ATS"],
-                    fill='toself'
-                ))
+    conf_fig = go.Figure(go.Indicator(
+        mode="gauge+number",
+        value=result["confidence_score"],
+        title={'text':"AI Confidence"}
+    ))
 
-                fig.update_layout(
-                    polar=dict(radialaxis=dict(visible=True, range=[0, 100])),
-                    showlegend=False,
-                    height=400
-                )
+    st.plotly_chart(conf_fig)
 
-                st.plotly_chart(fig, use_container_width=True)
+    # ---------------- Radar ----------------
 
-                # ---------------- Job Fit ----------------
-                st.markdown("### 🏷 Job Fit Category")
+    radar = go.Figure()
 
-                if result["job_fit_category"] == "Strong Fit":
-                    st.success("🟢 Strong Fit")
-                elif result["job_fit_category"] == "Moderate Fit":
-                    st.warning("🟡 Moderate Fit")
-                else:
-                    st.error("🔴 Weak Fit")
+    radar.add_trace(go.Scatterpolar(
+        r=[
+            result["skills_score"],
+            result["projects_score"],
+            result["experience_score"],
+            result["ats_score"]
+        ],
+        theta=["Skills","Projects","Experience","ATS"],
+        fill="toself"
+    ))
 
-                # ---------------- Matched Skills ----------------
-                st.markdown('<div class="section-title">✅ Matched Skills</div>', unsafe_allow_html=True)
+    st.plotly_chart(radar)
 
-                if result["matched_skills"]:
-                    for skill in result["matched_skills"]:
-                        st.markdown(
-                            f'<span class="skill-badge">{skill}</span>',
-                            unsafe_allow_html=True
-                        )
-                else:
-                    st.info("No matched skills found.")
+    # ---------------- Skill Heatmap ----------------
 
-                # ---------------- Missing Skills ----------------
-                st.markdown('<div class="section-title">❌ Missing Skills</div>', unsafe_allow_html=True)
+    st.subheader("Skill Gap Heatmap")
 
-                if result["missing_skills"]:
-                    for skill in result["missing_skills"]:
-                        st.markdown(
-                            f'<span class="missing-badge">{skill}</span>',
-                            unsafe_allow_html=True
-                        )
-                else:
-                    st.success("🎉 No missing skills! Candidate matches all required skills.")
+    skill_status = []
 
-                # ---------------- Suggestions ----------------
-                st.markdown('<div class="section-title">🚀 Smart Improvement Suggestions</div>', unsafe_allow_html=True)
+    for skill in jd_skills:
+        if skill in matched_skills:
+            skill_status.append(1)
+        else:
+            skill_status.append(0)
 
-                for suggestion in result["improvement_suggestions"]:
-                    st.info("👉 " + suggestion)
+    heatmap_df = pd.DataFrame({
+        "Skill": jd_skills,
+        "Match": skill_status
+    })
 
-            except Exception as e:
-                st.error("❌ Error during resume analysis.")
-                st.write(str(e))
+    fig, ax = plt.subplots(figsize=(10,2))
+
+    sns.heatmap(
+        [heatmap_df["Match"]],
+        cmap="RdYlGn",
+        cbar=False,
+        xticklabels=heatmap_df["Skill"],
+        yticklabels=["Skill Match"],
+        ax=ax
+    )
+
+    st.pyplot(fig)
+
+    # ---------------- Recruiter Score ----------------
+
+    recruiter_score = round(
+        result["accuracy_score"]*0.4 +
+        result["ats_score"]*0.4 +
+        result["confidence_score"]*0.2,2
+    )
+
+    st.subheader("Recruiter Recommendation Score")
+
+    st.progress(recruiter_score/100)
+
+    # ---------------- AI Recommendations ----------------
+
+    st.subheader("AI Job Readiness Recommendations")
+
+    for rec in result["ai_recommendations"]:
+        st.info(rec)
+
+    # ---------------- Download PDF ----------------
+
+    pdf = generate_pdf(result, matched_skills)
+
+    st.download_button(
+        label="⬇ Download Full Report",
+        data=pdf,
+        file_name="AuroraCV_Report.pdf",
+        mime="application/pdf"
+    )

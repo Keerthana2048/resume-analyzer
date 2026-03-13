@@ -9,3 +9,4 @@ uvicorn
 sentence-transformers
 torch
 scikit-learn
+transformers
