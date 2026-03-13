@@ -2,6 +2,7 @@ streamlit
 plotly
 pypdf2
 python-docx
+pdfplumber
 requests
 fastapi
 uvicorn
