@@ -1,6 +1,9 @@
 import streamlit as st
-import requests
 import plotly.graph_objects as go
+
+from resume_parser import parse_resume
+from skill_extractor import extract_skills
+from scoring_engine import calculate_scores
 
 st.set_page_config(page_title="AI Resume Screening", layout="wide")
 
@@ -68,31 +71,33 @@ if st.button("🔍 Analyze Resume", use_container_width=True):
 
     if resume is None or job_description.strip() == "":
         st.warning("⚠ Please upload resume and enter job description")
+
     else:
         with st.spinner("Analyzing Resume with AI Engine..."):
-            try:
-                files = {"resume_file": resume}
-                data = {"job_description": job_description}
 
-                response = requests.post(
-                    "http://127.0.0.1:8000/screen_resume",
-                    files=files,
-                    data=data
+            try:
+                # ---------------- Parse Resume ----------------
+                resume_text = parse_resume(resume)
+
+                # ---------------- Extract JD Skills ----------------
+                jd_skills = extract_skills(job_description)
+
+                # ---------------- Match Skills ----------------
+                matched_skills = [
+                    skill for skill in jd_skills
+                    if skill.lower() in resume_text.lower()
+                ]
+
+                # ---------------- Calculate Scores ----------------
+                result = calculate_scores(
+                    resume_text,
+                    job_description,
+                    matched_skills,
+                    jd_skills
                 )
 
-                # -------- Proper Error Handling --------
-                if response.status_code != 200:
-                    st.error(f"❌ Backend Error: {response.status_code}")
-                    st.write(response.text)
-                    st.stop()
-
-                result = response.json()
-
-                # Safety check
-                if "accuracy_score" not in result:
-                    st.error("❌ Invalid response from backend.")
-                    st.write(result)
-                    st.stop()
+                # Add matched skills to result
+                result["matched_skills"] = matched_skills
 
                 # ---------------- Dashboard ----------------
                 st.markdown("---")
@@ -177,5 +182,5 @@ if st.button("🔍 Analyze Resume", use_container_width=True):
                     st.info("👉 " + suggestion)
 
             except Exception as e:
-                st.error("❌ Failed to connect to backend.")
+                st.error("❌ Error during resume analysis.")
                 st.write(str(e))
