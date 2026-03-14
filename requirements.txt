@@ -8,4 +8,5 @@ sentence-transformers
 scikit-learn
 reportlab
 python-docx
+pdfplumber
 PyPDF2
